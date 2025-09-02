@@ -69,6 +69,7 @@ for root, dirs, files in os.walk(DATASET_PATH):
             except Exception as e:
                 print(f"Failed to read {file_path}: {e}")
 
+
 df_tracks = pd.DataFrame(tracks)
 print(f"Loaded {len(df_tracks)} tracks")
 
@@ -119,8 +120,15 @@ dataset.fit(
     item_features=list(all_item_features)
 )
 
-with open("/app/lightfm_dataset.pkl", "wb") as f:
-    pickle.dump(dataset, f)
+num_items = len(dataset.mapping()[1])
+num_users = len(dataset.mapping()[0])
+# Save along with dataset
+with open("lightfm_dataset.pkl", "wb") as f:
+    pickle.dump({
+        "dataset": dataset,
+        "num_items": num_items,
+        "num_users": num_users
+    }, f)
 
 # 3. Build interactions
 user_item_pairs = list(df_sample[['artist_name', 'track_id']].itertuples(index=False, name=None))
@@ -154,8 +162,8 @@ print('built item features')
 # training
 
 # %%
-model = LightFM(loss='bpr', no_components=15)
-model.fit(interactions, item_features=item_features, epochs=10, num_threads=1)
+model = LightFM(loss='bpr', no_components=20)
+model.fit(interactions, item_features=item_features, epochs=15, num_threads=1)
 
 # %%
 print('trained model')
