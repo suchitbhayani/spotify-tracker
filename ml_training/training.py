@@ -1,4 +1,4 @@
-# %%
+# %% Fixed training code
 import os
 import h5py
 import numpy as np
@@ -6,13 +6,11 @@ import pandas as pd
 from lightfm import LightFM
 from lightfm.data import Dataset
 import pickle
-import sys
 
 # %%
 DATASET_PATH = "/data/MillionSongSubset"
 MODEL_PATH = "/api/lightfm_msd_model.pkl"
-SAVE_DATASET_PATH = "/api/lightfm_dataset.pkl"
-N_SAMPLES = 10_000
+SAVE_DATASET_PATH = '/api/lightfm_dataset.pkl'
 
 # %% [markdown]
 # read all .h5 files
@@ -40,8 +38,6 @@ def extract_track_info(h5_file):
         tempo = analysis['tempo']
         loudness = analysis['loudness']
         duration = analysis['duration']
-        danceability = analysis['danceability']
-        energy = analysis['energy']
         key = analysis['key']
         mode = analysis['mode']
         time_signature = analysis['time_signature']
@@ -52,125 +48,84 @@ def extract_track_info(h5_file):
         "tempo": tempo,
         "loudness": loudness,
         "duration": duration,
-        "danceability": danceability,
-        "energy": energy,
         "key": key,
         "mode": mode,
         "time_signature": time_signature
     }
 
 # %%
+# read files, load into df
 tracks = []
-found_files = 0
 for root, dirs, files in os.walk(DATASET_PATH):
     for file in files:
         if file.endswith(".h5"):
-            found_files += 1
             file_path = os.path.join(root, file)
             try:
                 info = extract_track_info(file_path)
                 tracks.append(info)
             except Exception as e:
-                print(f"❌ Failed to read {file_path}: {e}", file=sys.stderr)
-
-print(f"Discovered {found_files} .h5 files")
-print(f"Successfully loaded {len(tracks)} tracks")
-
+                print(f"Failed to read {file_path}: {e}")
 
 df_tracks = pd.DataFrame(tracks)
 print(f"Loaded {len(df_tracks)} tracks")
 
-# %%
-df_sample = df_tracks.sample(N_SAMPLES)
-print(f'using {N_SAMPLES} samples for training')
-
-# %% [markdown]
-# create user-item interactions
 
 # %%
-users = df_sample['artist_name'].unique().tolist()  # pseudo-users
-items = df_sample['track_id'].tolist()
-user_item_pairs = list(df_sample[['artist_name', 'track_id']].itertuples(index=False, name=None))
-
-# %%
-print('created user-item interactions')
-
-# %% [markdown]
-# lightfm dataset
-
-# %%
-# 1. Prepare all possible features first
+# prepare item features
 all_item_features = set()
+item_features_list = []
 
-for row in df_sample.itertuples(index=False):
-    # bin numeric features
-    tempo_bin = int(row.tempo // 10)        # 10 BPM per bin
-    loudness_bin = int(row.loudness // 4)   # 4 dB per bin
-    dance_bin = int(row.danceability*5)     # 0-5 scale
-    energy_bin = int(row.energy*5)
-    duration_bin = int(row.duration // 30)  # 30s intervals
+for row in df_tracks.itertuples(index=False):
+    features = [
+        f"tempo:{row.tempo}",
+        f"loudness:{row.loudness}",
+        f"duration:{row.duration}",
+        f"key:{row.key}",
+        f"mode:{row.mode}",
+        f"time_signature:{row.time_signature}"
+    ]
+    all_item_features.update(features)
+    item_features_list.append((row.track_id, features))
 
-    all_item_features.update([
-        f"artist:{row.artist_name}",
-        f"tempo:{tempo_bin}",
-        f"loudness:{loudness_bin}",
-        f"duration:{duration_bin}",
-        f"danceability:{dance_bin}",
-        f"energy:{energy_bin}"
-    ])
+print(f"Created {len(all_item_features)} unique features")
 
-# 2. Fit dataset with users, items, and features
+
+
+# %%
+# fit dataset with users, items, and features
 dataset = Dataset()
 dataset.fit(
-    users=df_sample['artist_name'].unique(),
-    items=df_sample['track_id'].tolist(),
-    item_features=list(all_item_features)
+    users=df_tracks['artist_name'].unique(),
+    items=df_tracks['track_id'].tolist(),
+    item_features=list(all_item_features)  # Make sure these are the feature strings
 )
 
-num_items = len(dataset.mapping()[1])
-num_users = len(dataset.mapping()[0])
-# Save along with dataset
+users = df_tracks['artist_name'].unique().tolist()  # using artists as users
+items = df_tracks['track_id'].tolist()
+user_item_pairs = list(df_tracks[['artist_name', 'track_id']].itertuples(index=False, name=None))
+interactions, weights = dataset.build_interactions(user_item_pairs)
+print('created user-item matrix')
+
+# save dataset with correct counts
 with open(SAVE_DATASET_PATH, "wb") as f:
     pickle.dump({
         "dataset": dataset,
-        "num_items": num_items,
-        "num_users": num_users
+        "num_items": len(users),
+        "num_users": len(items),
+        "num_item_features": len(all_item_features),
+        "sample_features": list(all_item_features)[:10]  # Save some samples for debugging
     }, f)
 
-# 3. Build interactions
-user_item_pairs = list(df_sample[['artist_name', 'track_id']].itertuples(index=False, name=None))
-(interactions, weights) = dataset.build_interactions(user_item_pairs)
-
-# 4. Build item features
-item_features_list = []
-for row in df_sample.itertuples(index=False):
-    tempo_bin = int(row.tempo // 10)        # 10 BPM per bin
-    loudness_bin = int(row.loudness // 4)   # 4 dB per bin
-    dance_bin = int(row.danceability*5)     # 0-5 scale
-    energy_bin = int(row.energy*5)
-    duration_bin = int(row.duration // 30)  # 30s intervals
-
-    features = [
-        f"artist:{row.artist_name}",
-        f"tempo:{tempo_bin}",
-        f"loudness:{loudness_bin}",
-        f"duration:{duration_bin}",
-        f"danceability:{dance_bin}",
-        f"energy:{energy_bin}"
-    ]
-    item_features_list.append((row.track_id, features))
-
+# build item features
 item_features = dataset.build_item_features(item_features_list)
-
-# %%
 print('built item features')
 
 # %% [markdown]
 # training
 
 # %%
-model = LightFM(loss='bpr', no_components=20)
-model.fit(interactions, item_features=item_features, epochs=15, num_threads=1)
+model = LightFM(loss='bpr', no_components=15)
+model.fit(interactions, item_features=item_features, epochs=10, num_threads=1)
 
 # %%
 print('trained model')
@@ -182,4 +137,7 @@ with open(MODEL_PATH, "wb") as f:
 # %%
 print('saved model')
 
-
+# Add some debugging info
+print(f"\nFinal verification:")
+print(f"Model trained with {interactions.shape[0]} users and {interactions.shape[1]} items")
+print(f"Sample features that should exist: {list(all_item_features)[:10]}")
