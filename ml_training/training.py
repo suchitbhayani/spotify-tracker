@@ -119,6 +119,9 @@ dataset.fit(
     item_features=list(all_item_features)
 )
 
+with open("/app/lightfm_dataset.pkl", "wb") as f:
+    pickle.dump(dataset, f)
+
 # 3. Build interactions
 user_item_pairs = list(df_sample[['artist_name', 'track_id']].itertuples(index=False, name=None))
 (interactions, weights) = dataset.build_interactions(user_item_pairs)
