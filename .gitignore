@@ -1,0 +1,9 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Env files
+.env
+.env.local
+# OS cruft, stops slop being committed based on OS
+.DS_Store
