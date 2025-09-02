@@ -76,15 +76,15 @@ all_item_features = set()
 item_features_list = []
 
 for row in df_tracks.itertuples(index=False):
-    features = [
-        f"tempo:{row.tempo}",
-        f"loudness:{row.loudness}",
-        f"duration:{row.duration}",
-        f"key:{row.key}",
-        f"mode:{row.mode}",
-        f"time_signature:{row.time_signature}"
-    ]
-    all_item_features.update(features)
+    features = {
+        "tempo": row.tempo,
+        "loudness": row.loudness,
+        "duration": row.duration,
+        "key": row.key,
+        "mode": row.mode,
+        "time_signature": row.time_signature
+    }
+    all_item_features.update(features.keys())
     item_features_list.append((row.track_id, features))
 
 print(f"Created {len(all_item_features)} unique features")
@@ -97,7 +97,7 @@ dataset = Dataset()
 dataset.fit(
     users=df_tracks['artist_name'].unique(),
     items=df_tracks['track_id'].tolist(),
-    item_features=list(all_item_features)  # Make sure these are the feature strings
+    item_features=list(all_item_features)
 )
 
 users = df_tracks['artist_name'].unique().tolist()  # using artists as users
@@ -112,8 +112,7 @@ with open(SAVE_DATASET_PATH, "wb") as f:
         "dataset": dataset,
         "num_items": len(users),
         "num_users": len(items),
-        "num_item_features": len(all_item_features),
-        "sample_features": list(all_item_features)[:10]  # Save some samples for debugging
+        "num_item_features": len(all_item_features)
     }, f)
 
 # build item features
@@ -124,8 +123,8 @@ print('built item features')
 # training
 
 # %%
-model = LightFM(loss='bpr', no_components=15)
-model.fit(interactions, item_features=item_features, epochs=10, num_threads=1)
+model = LightFM(loss='bpr', no_components=25)
+model.fit(interactions, item_features=item_features, epochs=12, num_threads=1)
 
 # %%
 print('trained model')
@@ -140,4 +139,4 @@ print('saved model')
 # Add some debugging info
 print(f"\nFinal verification:")
 print(f"Model trained with {interactions.shape[0]} users and {interactions.shape[1]} items")
-print(f"Sample features that should exist: {list(all_item_features)[:10]}")
+print(f"Sample features that should exist: {item_features_list[0][1]}")
