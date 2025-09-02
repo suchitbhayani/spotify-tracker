@@ -6,10 +6,12 @@ import pandas as pd
 from lightfm import LightFM
 from lightfm.data import Dataset
 import pickle
+import sys
 
 # %%
 DATASET_PATH = "/data/MillionSongSubset"
-MODEL_PATH = "/app/lightfm_msd_model.pkl"
+MODEL_PATH = "/api/lightfm_msd_model.pkl"
+SAVE_DATASET_PATH = "/api/lightfm_dataset.pkl"
 N_SAMPLES = 10_000
 
 # %% [markdown]
@@ -59,15 +61,20 @@ def extract_track_info(h5_file):
 
 # %%
 tracks = []
+found_files = 0
 for root, dirs, files in os.walk(DATASET_PATH):
     for file in files:
         if file.endswith(".h5"):
+            found_files += 1
             file_path = os.path.join(root, file)
             try:
                 info = extract_track_info(file_path)
                 tracks.append(info)
             except Exception as e:
-                print(f"Failed to read {file_path}: {e}")
+                print(f"❌ Failed to read {file_path}: {e}", file=sys.stderr)
+
+print(f"Discovered {found_files} .h5 files")
+print(f"Successfully loaded {len(tracks)} tracks")
 
 
 df_tracks = pd.DataFrame(tracks)
@@ -123,7 +130,7 @@ dataset.fit(
 num_items = len(dataset.mapping()[1])
 num_users = len(dataset.mapping()[0])
 # Save along with dataset
-with open("lightfm_dataset.pkl", "wb") as f:
+with open(SAVE_DATASET_PATH, "wb") as f:
     pickle.dump({
         "dataset": dataset,
         "num_items": num_items,
