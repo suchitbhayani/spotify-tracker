@@ -24,10 +24,10 @@ router.get('/top_artists', async (req, res) => {
   try {
     const result = await axios.get(url, payload);
     const data = result.data;
-    for (let i = 1; i <= 10; ++i) {
-      artist = data.items[i - 1];
-      console.log(`Artist ${i}\n\tName: ${artist.name}\n\tID: ${artist.id}`);
-    }
+    //for (let i = 1; i <= 10; ++i) {
+    //  artist = data.items[i - 1];
+    //  console.log(`Artist ${i}\n\tName: ${artist.name}\n\tID: ${artist.id}`);
+    //}
   } catch (e) {
     console.error("Spotify GET request failed:", e.message);
     return res.status(400).send("Spotify GET top artists request failed");
