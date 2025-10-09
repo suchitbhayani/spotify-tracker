@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const mongoose = require('mongoose');
+const session = require('express-session');
 
 dotenv.config();
 
@@ -29,7 +30,22 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
-app.use('/api/recommend', require('./routes/recommend'));
+app.use(session({
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: true,
+  cookie: {
+    sameSite: 'lax',
+    httpOnly: true,
+    secure: false,
+    priority: 'high',
+  }
+}));
+
+app.use('/api', require('./routes/apiRouter'));
+app.use('/auth', require('./routes/authRouter'));
+
+
 // Connect to MongoDB, then start server
 mongoose
   .connect(MONGO_URI, { dbName: DB_NAME })
@@ -43,6 +59,14 @@ mongoose
     console.error('❌ MongoDB connection error:', err.message);
     process.exit(1);
   });
+// try {
+//   app.listen(PORT, '::1', () => {
+//     console.log(`🚀 Server listening on http://[::1]:${PORT}`);
+//   })
+// } catch (err) {
+//   console.error('❌ Server startup failure', err.message);  
+//   process.exit(1);
+// };
 
 // Graceful shutdown
 process.on('SIGINT', async () => {

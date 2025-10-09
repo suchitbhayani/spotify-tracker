@@ -1,0 +1,101 @@
+const axios = require("axios");
+const express = require("express");
+const pkce = require("../utils/pkce");
+const dotenv = require("dotenv");
+
+dotenv.config();
+const CLIENT_ID = process.env.CLIENT_ID;
+const PORT = process.env.PORT;
+
+const router = express.Router();
+
+const ipv4RedirectUri = `http://127.0.0.1:${PORT}/auth/spotify/callback`;
+const ipv6RedirectUri = `http://[::1]:${PORT}/auth/spotify/callback`;
+
+router.get("/spotify", async (req, res) => {
+  if (!CLIENT_ID) {
+    console.error("❌ Missing CLIENT_ID in .env");
+    process.exit(1);
+  }
+
+  const state = pkce.generateState(16);
+  const codeVerifier = pkce.generateCodeVerifier(64);
+  const codeChallenge = await pkce.generateCodeChallengeFromVerifier(codeVerifier);
+  
+  req.session.state = state;
+  req.session.codeVerifier = codeVerifier;
+
+  const authUrl = new URL("https://accounts.spotify.com/authorize")
+  const scope = "user-follow-read user-top-read";
+  
+  const params = new URLSearchParams({
+    client_id: CLIENT_ID,
+    response_type: 'code',
+    scope: scope,
+    state: state,
+    code_challenge_method: 'S256',
+    code_challenge: codeChallenge,
+    redirect_uri: ipv6RedirectUri
+  });
+
+  authUrl.search = new URLSearchParams(params).toString();
+  req.session.save(err => {
+    if (err) {
+      console.error("Failed to save session:", err.message);
+      return res.status(500).send("Couldn't save session");
+    }
+    
+    res.redirect(authUrl);
+  });
+});
+
+router.get('/spotify/callback', async (req, res) => {
+  const {code, error, state} = req.query;
+
+  if (error) {
+    console.error("Spotify auth code error:", error);
+    return res.status(400).send("Authorization failed:" + error);
+  }
+  
+  if (state !== req.session.state) {
+    console.error("Spotify auth error: Mismatching request states");
+    return res.status(409).send("Invalid State");
+  }
+
+  const codeVerifier = req.session.codeVerifier;
+
+  const url = "https://accounts.spotify.com/api/token";
+  const payload = new URLSearchParams({
+    client_id: CLIENT_ID,
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: ipv6RedirectUri,
+    code_verifier: codeVerifier,
+  });
+
+  const opts = {
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    }
+  };
+  
+  // https://www.oauth.com/oauth2-servers/access-tokens/access-token-response/
+  try {
+    const tokenRes = await axios.post(url, payload, opts);
+    const tokenData = tokenRes.data;
+
+    if (tokenData.error) {
+      console.error("Spotify auth access token error:", tokenData.error);
+      console.error("Error Description:", tokenData.error_description);
+      return res.status(400).send("Authorization failed:" + tokenData.error);
+    }
+
+    req.session.access_token = tokenData.access_token; 
+    return res.send('Authentication successful!');
+  } catch(e) {
+    console.error("Spotify callback handler error:", e.response || e.message);
+    return res.status(500).send("Internal error during Spotify OAuth callback");
+  }
+});
+
+module.exports = router;
