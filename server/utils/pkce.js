@@ -10,7 +10,7 @@ const generateCodeVerifier = (length) => {
   const values = crypto.getRandomValues(new Uint8Array(length * 2));
 
   // To prevent modulo bias, we only accept:
-  //      currVal in [0, Largest Mult of possible.length < values.length]
+  //      currVal in [0, Largest Mult of possible.length < 2^8]
   const res = [];
   let i = 0;
   while (res.length < length && i < values.length) {

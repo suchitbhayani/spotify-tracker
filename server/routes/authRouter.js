@@ -92,7 +92,7 @@ router.get('/spotify/callback', async (req, res) => {
 
     req.session.access_token = tokenData.access_token; 
     return res.send('Authentication successful!');
-  } catch(e) {
+  } catch (err) {
     console.error("Spotify callback handler error:", e.response || e.message);
     return res.status(500).send("Internal error during Spotify OAuth callback");
   }
