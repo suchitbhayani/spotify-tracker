@@ -1,20 +1,6 @@
 const axios = require('axios');
 
 /**
- * Similarity-based recommendation curation algorithm
- * Finds the most meaningful recommendations based on intersections and similarity metrics
- */
-
-/**
- * Calculate Jaccard similarity between two sets
- */
-function jaccardSimilarity(setA, setB) {
-  const intersection = new Set([...setA].filter(x => setB.has(x)));
-  const union = new Set([...setA, ...setB]);
-  return intersection.size / union.size;
-}
-
-/**
  * Calculate weighted score based on recommendation frequency across artists
  */
 function calculateWeightedScore(trackId, artistRecommendations) {
@@ -38,27 +24,7 @@ function calculateWeightedScore(trackId, artistRecommendations) {
 }
 
 /**
- * Get track similarity data from ML service (if available)
- */
-async function getTrackSimilarityData(trackIds) {
-  const base = process.env.ML_SERVICE_URL;
-  if (!base) {
-    return null;
-  }
-
-  try {
-    // This would need to be implemented in the ML service
-    // For now, we'll work with the data we have
-    console.log('🎵 Track similarity data not yet available from ML service');
-    return null;
-  } catch (err) {
-    console.warn('⚠️ Could not fetch track similarity data:', err.message);
-    return null;
-  }
-}
-
-/**
- * Advanced similarity-based curation algorithm
+ * Curation algorithm
  */
 async function getCuratedRecommendations(artistRecommendations, targetCount = 5) {
   if (!Array.isArray(artistRecommendations) || artistRecommendations.length === 0) {
@@ -89,37 +55,13 @@ async function getCuratedRecommendations(artistRecommendations, targetCount = 5)
     });
   });
 
-  // Step 2: Calculate similarity scores between artists
-  const artistSimilarities = [];
-  for (let i = 0; i < artistSets.length; i++) {
-    for (let j = i + 1; j < artistSets.length; j++) {
-      const similarity = jaccardSimilarity(artistSets[i], artistSets[j]);
-      artistSimilarities.push({
-        artist1: i,
-        artist2: j,
-        similarity: similarity
-      });
-    }
-  }
 
-  // Step 3: Calculate weighted scores for each track
+  // Step 2: Calculate weighted scores for each track
   for (const [trackId, trackData] of trackFrequency) {
     trackData.weightedScore = calculateWeightedScore(trackId, artistRecommendations);
-    
-    // Bonus for tracks recommended by similar artists
-    let similarityBonus = 0;
-    trackData.artists.forEach(artistIndex => {
-      artistSimilarities.forEach(sim => {
-        if (sim.artist1 === artistIndex || sim.artist2 === artistIndex) {
-          similarityBonus += sim.similarity * 0.1;
-        }
-      });
-    });
-    
-    trackData.weightedScore += similarityBonus;
   }
 
-  // Step 4: Sort tracks by weighted score and select top recommendations
+  // Step 3: Sort tracks by weighted score and select top recommendations
   const sortedTracks = Array.from(trackFrequency.entries())
     .map(([trackId, data]) => ({
       trackId,
@@ -198,5 +140,4 @@ module.exports = {
   getCuratedRecommendations,
   getSimpleIntersectionRecommendations,
   calculateWeightedScore,
-  jaccardSimilarity
 };

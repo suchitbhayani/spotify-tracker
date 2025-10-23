@@ -18,7 +18,10 @@ if (!MONGO_URI) {
   process.exit(1);
 }
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URI,
+  credentials: true,
+}));
 app.use(express.json());
 
 // Health route

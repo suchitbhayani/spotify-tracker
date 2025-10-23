@@ -53,21 +53,19 @@ async function getArtistRecommendations(artistName) {
 
 /**
  * Get curated recommendations by combining multiple artist recommendations
- * Uses similarity-based algorithm for meaningful recommendations
  */
 async function getCuratedRecommendationsFromArtists(artistNames, targetCount = 5) {
   if (!Array.isArray(artistNames) || artistNames.length === 0) {
     return [];
   }
 
-  console.log(`🎯 Getting similarity-based curated recommendations for ${artistNames.length} artists:`, artistNames);
+  console.log(`🎯 Getting curated recommendations for ${artistNames.length} artists:`, artistNames);
 
   // Get recommendations for each artist in parallel
   const artistRecs = await Promise.all(
     artistNames.map(artist => getArtistRecommendations(artist))
   );
 
-  // Use similarity-based curation algorithm
   const curatedRecs = await getCuratedRecommendations(artistRecs, targetCount);
 
   console.log(`✅ Generated ${curatedRecs.length} meaningful curated recommendations`);
@@ -101,5 +99,5 @@ async function fetchRecommendations(userId, likedTracks) {
 module.exports = {
   fetchRecommendations, // Legacy
   getArtistRecommendations,
-  getCuratedRecommendations: getCuratedRecommendationsFromArtists // New similarity-based version
+  getCuratedRecommendations: getCuratedRecommendationsFromArtists
 };
