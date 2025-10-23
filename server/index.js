@@ -54,8 +54,8 @@ mongoose
   .connect(MONGO_URI, { dbName: DB_NAME })
   .then(() => {
     console.log('✅ Connected to MongoDB');
-    app.listen(PORT, () => {
-      console.log(`🚀 Server listening on http://localhost:${PORT}`);
+    app.listen(PORT, '::1', () => {
+      console.log(`🚀 Server listening on http://[::1]:${PORT}`);
     });
   })
   .catch((err) => {
