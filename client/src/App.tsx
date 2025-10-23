@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
-import './App.css'
+import ArtistCard from "./components/ArtistCard";
 
 interface Artist {
   name: string;
+  spotifyId?: string;
   spotifyRank?: number;
+  spotifyImageURL?: string;
   available?: boolean;
   matchType?: string;
 }
@@ -31,30 +33,29 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [spotifyArtists, setSpotifyArtists] = useState<Artist[]>([]);
   const [availabilityResult, setAvailabilityResult] = useState<AvailabilityResult | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Artist[]>([]);
   const [selectedArtists, setSelectedArtists] = useState<Artist[]>([]);
   const [recommendations, setRecommendations] = useState<RecommendationResult | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const API_BASE = 'http://localhost:8080/api';
+  const API_BASE = 'http://[::1]:8080';
 
   // Step 1: Authenticate with Spotify
   const handleSpotifyAuth = () => {
-    window.location.href = 'http://localhost:8080/auth/spotify';
+    const redirectURI = encodeURIComponent('http://[::1]:5173')
+    window.location.href = `${API_BASE}/auth/spotify?redirectURI=${redirectURI}`;
   };
 
   // Step 2: Get top artists from Spotify
   const fetchTopArtists = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE}/top_artists`);
+      const response = await fetch(`${API_BASE}/api/top_artists`, { credentials: 'include' });
       const data = await response.json();
-      
       if (response.ok) {
         setSpotifyArtists(data.artistNames.map((name: string, index: number) => ({
           name,
-          spotifyRank: index + 1
+          spotifyImageURL: data.artistImageURLs[index],
+          spotifyRank: index + 1,
         })));
       } else {
         console.error('Failed to fetch top artists:', data.error);
@@ -70,13 +71,14 @@ function App() {
   const checkArtistAvailability = async (artists: Artist[]) => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE}/check_artists_availability`, {
+      const response = await fetch(`${API_BASE}/api/check_artists_availability`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           artistNames: artists.map(a => a.name),
           userId: 'user123' // In real app, get from auth
-        })
+        }),
+        credentials: 'include',
       });
       const data = await response.json();
       
@@ -105,27 +107,6 @@ function App() {
       console.error('Error checking availability:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Step 4: Search artists
-  const searchArtists = async (query: string) => {
-    if (query.length < 2) {
-      setSearchResults([]);
-      return;
-    }
-
-    try {
-      const response = await fetch(`${API_BASE}/artists/search?q=${encodeURIComponent(query)}`);
-      const data = await response.json();
-      
-      if (response.ok) {
-        setSearchResults(data.results);
-      } else {
-        console.error('Search failed:', data.error);
-      }
-    } catch (error) {
-      console.error('Error searching artists:', error);
     }
   };
 
@@ -161,14 +142,6 @@ function App() {
     }
   };
 
-  const addArtist = (artist: Artist) => {
-    if (!selectedArtists.find(a => a.name === artist.name)) {
-      setSelectedArtists([...selectedArtists, artist]);
-    }
-    setSearchQuery('');
-    setSearchResults([]);
-  };
-
   const removeArtist = (artistName: string) => {
     setSelectedArtists(selectedArtists.filter(a => a.name !== artistName));
   };
@@ -177,13 +150,12 @@ function App() {
   useEffect(() => {
     // Check if user is authenticated (simplified check)
     const checkAuth = () => {
-      fetch(`${API_BASE}/top_artists`)
+      fetch(`${API_BASE}/api/me`, { credentials: 'include' })
         .then(response => {
+          console.log("Hi")
           if (response.ok) {
             setIsAuthenticated(true);
             fetchTopArtists();
-          } else {
-            setIsAuthenticated(false);
           }
         })
         .catch(() => setIsAuthenticated(false));
@@ -195,27 +167,18 @@ function App() {
   // Check availability when Spotify artists are loaded
   useEffect(() => {
     if (spotifyArtists.length > 0) {
-      checkArtistAvailability(spotifyArtists);
     }
   }, [spotifyArtists]);
 
-  // Search when query changes
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      searchArtists(searchQuery);
-    }, 300);
-    return () => clearTimeout(timeoutId);
-  }, [searchQuery]);
-
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="bg-white p-8 rounded-lg shadow-md text-center">
-          <h1 className="text-2xl font-bold mb-4">Spotify Track Recommender</h1>
+      <div className="min-h-screen bg-neutral-900 flex items-center justify-center">
+        <div className="bg-green-300 p-8 rounded-lg shadow-md text-center">
+          <h1 className="text-2xl font-bold mb-4 text-shadow-2xs">Spotify Track Recommender</h1>
           <p className="mb-6">Connect your Spotify account to get personalized music recommendations</p>
           <button 
             onClick={handleSpotifyAuth}
-            className="bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600"
+            className="bg-green-500 text-gray-300 px-6 py-2 rounded hover:text-gray-50 hover:bg-gray-700 hover:cursor-pointer"
           >
             Connect Spotify
           </button>
@@ -225,24 +188,19 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-8">
+    <div className="min-h-screen bg-neutral-900 p-8 items-center justify-center">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">Spotify Track Recommender</h1>
+        <h1 className="text-4xl font-bold text-gray-300 mb-8 text-center text-shadow-black text-shadow-lg">Spotify Track Recommender</h1>
 
         {/* Step 1: Show Spotify Artists */}
         {spotifyArtists.length > 0 && (
-          <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-            <h2 className="text-xl font-semibold mb-4">Your Top Spotify Artists</h2>
+          <div className="bg-green-300 bg p-6 rounded-lg shadow-md mb-6">
+            <h2 className="text-2xl font-bold mb-4 text-shadow-2xs">Your Top Spotify Artists</h2>
             <div className="grid grid-cols-2 gap-2">
               {spotifyArtists.map(artist => (
-                <div key={artist.name} className="flex items-center justify-between p-2 border rounded">
-                  <span>#{artist.spotifyRank} {artist.name}</span>
-                  <span className={`px-2 py-1 rounded text-xs ${
-                    availabilityResult?.availableArtists.find(a => a.name === artist.name) 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-red-100 text-red-800'
-                  }`}>
-                    {availabilityResult?.availableArtists.find(a => a.name === artist.name) ? 'Available' : 'Not Available'}
+                <div key={artist.name} className="flex items-center">
+                  <span>
+                    <ArtistCard {...artist} /> 
                   </span>
                 </div>
               ))}
@@ -251,7 +209,7 @@ function App() {
         )}
 
         {/* Step 2: Show Availability Status */}
-        {availabilityResult && !recommendations && (
+        {false && availabilityResult && !recommendations && (
           <div className="bg-white p-6 rounded-lg shadow-md mb-6">
             <h2 className="text-xl font-semibold mb-4">Artist Availability Status</h2>
             <div className="grid grid-cols-3 gap-4 mb-4">
@@ -269,7 +227,7 @@ function App() {
               </div>
             </div>
             
-            {!availabilityResult.canGenerateRecommendations && (
+            {false && !availabilityResult.canGenerateRecommendations && (
               <div className="bg-yellow-50 border border-yellow-200 rounded p-4">
                 <p className="text-yellow-800">
                   You need {availabilityResult.needsMoreArtists} more artists to generate recommendations. 
@@ -280,45 +238,8 @@ function App() {
           </div>
         )}
 
-        {/* Step 3: Search and Add Artists - Only show if no recommendations yet */}
-        {!recommendations && (
-          <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-            <h2 className="text-xl font-semibold mb-4">Add More Artists</h2>
-          <div className="mb-4">
-            <input
-              type="text"
-              placeholder="Search for artists in our dataset..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-          
-          {searchResults.length > 0 && (
-            <div className="border rounded-lg max-h-48 overflow-y-auto">
-              {searchResults.map(artist => (
-                <div 
-                  key={artist.name}
-                  onClick={() => addArtist(artist)}
-                  className="p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
-                >
-                  <div className="flex justify-between items-center">
-                    <span>{artist.name}</span>
-                    <span className={`px-2 py-1 rounded text-xs ${
-                      artist.matchType === 'exact' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
-                    }`}>
-                      {artist.matchType === 'exact' ? 'Exact Match' : 'Partial Match'}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          </div>
-        )}
-
         {/* Step 4: Selected Artists - Only show if no recommendations yet */}
-        {!recommendations && (
+        {false && !recommendations && (
         <div className="bg-white p-6 rounded-lg shadow-md mb-6">
           <h2 className="text-xl font-semibold mb-4">
             Selected Artists ({selectedArtists.length}/5+)

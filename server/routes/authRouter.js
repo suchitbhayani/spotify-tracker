@@ -17,6 +17,13 @@ router.get("/spotify", async (req, res) => {
     console.error("❌ Missing CLIENT_ID in .env");
     process.exit(1);
   }
+  
+  const { redirectURI } = req.query;
+  if (!redirectURI) {
+    return res.status(400).send('No redirect URI callback specified for endpoint');
+  }
+  
+  req.session.redirectURI = redirectURI;
 
   const state = pkce.generateState(16);
   const codeVerifier = pkce.generateCodeVerifier(64);
@@ -51,7 +58,7 @@ router.get("/spotify", async (req, res) => {
 
 router.get('/spotify/callback', async (req, res) => {
   const {code, error, state} = req.query;
-
+  
   if (error) {
     console.error("Spotify auth code error:", error);
     return res.status(400).send("Authorization failed:" + error);
@@ -91,11 +98,23 @@ router.get('/spotify/callback', async (req, res) => {
     }
 
     req.session.access_token = tokenData.access_token; 
-    return res.send('Authentication successful!');
+
+    if (!req.session.redirectURI) {
+      return res.status(400).send('No callback URI specified after auth')
+    }
+    req.session.save(err => {
+      if (err) {
+        console.error("Failed to save session:", err.message);
+        return res.status(500).send("Couldn't save session");
+      }
+      res.redirect(`${req.session.redirectURI}`);
+    });
+
   } catch(e) {
     console.error("Spotify callback handler error:", e.response || e.message);
     return res.status(500).send("Internal error during Spotify OAuth callback");
   }
+
 });
 
 module.exports = router;

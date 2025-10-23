@@ -6,6 +6,15 @@ const { fetchRecommendations, getCuratedRecommendations, getArtistRecommendation
 
 const router = express.Router();
 
+router.get('/me', (req, res) => {
+  const access_token = req.session.access_token;
+  if (!access_token) {
+    return res.status(401).json({ authenticated: false });
+  }
+  
+  return res.json({authenticated: true});
+});
+
 router.get('/top_artists', async (req, res) => {
   const access_token = req.session.access_token;
   if (!access_token) {
@@ -22,21 +31,74 @@ router.get('/top_artists', async (req, res) => {
   
   try {
     const result = await axios.get(url, payload);
+    
+    if (result.error) {
+      console.error("Spotify GET request failed")
+    }
     const data = result.data;
     
     // Extract artist names for recommendation system
     const artistNames = data.items.map(artist => artist.name);
+    const artistIds = data.items.map(artist => artist.id);
+    const artistImagesURLs= data.items.map(artist => {
+      if (!artist.images || artist.images.length == 0) {
+        return `data:image/png;base64,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`
+      }
+
+      return artist.images[0].url
+    })
     
     console.log(`📊 Retrieved ${artistNames.length} top artists:`, artistNames);
+    console.log(`📊 Retrieved ${artistImagesURLs.length} artist Images`, artistImagesURLs);
     
     res.json({
       artists: data.items,
-      artistNames: artistNames
+      artistNames: artistNames,
+      artistIds: artistIds,
+      artistImageURLs: artistImagesURLs,
     });
   } catch (e) {
     console.error("Spotify GET request failed:", e.message);
-    return res.status(400).json({ error: "Failed to fetch top artists from Spotify" });
+    return res.status(e.status).json({ error: "Failed to fetch top artists from Spotify" });
   }
+});
+
+router.get('/recs_from_top_artists', async (req, res) => {
+  const url = 'http://[::]:8080/api/top_artists';
+  
+  const { data } = await axios.get(url, { timeout: 50000 });
+  if (!data) {
+    return res.status(400).json({ error: "Failed to get recommendations from top artists"});
+  }
+  
 });
 
 // Check which Spotify artists are available and auto-generate if possible
