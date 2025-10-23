@@ -25,6 +25,12 @@ RUN cd client && npm run build
 # Copy nginx config
 COPY client/nginx.conf /etc/nginx/conf.d/default.conf
 
+# Create nginx directory for static files
+RUN mkdir -p /usr/share/nginx/html
+
+# Copy built frontend to nginx directory
+RUN cp -r /app/client/dist/* /usr/share/nginx/html/
+
 # Create startup script
 RUN echo '#!/bin/sh' > /app/start.sh && \
     echo 'nginx -g "daemon off;" &' >> /app/start.sh && \
