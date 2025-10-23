@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:4.1
+    container_name: spotify-tracker-mongodb-prod
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD_FILE: /run/secrets/mongodb_password
+      MONGO_INITDB_DATABASE: spotify_tracker
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - spotify-tracker-network
+    secrets:
+      - mongodb_password
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: spotify-tracker-backend-prod
+    restart: unless-stopped
+    expose:
+      - "8080" # Internal port only
+    environment:
+      - NODE_ENV=production
+      - DOCKER=true
+      - PORT=8080
+      - MONGO_URI=mongodb://admin:${MONGO_ROOT_PASSWORD}@mongodb:27017/spotify_tracker?authSource=admin
+      - MONGO_DB=spotify_tracker
+      - CLIENT_ID=${CLIENT_ID}
+      - SESSION_SECRET_FILE=/run/secrets/session_secret
+      - FRONTEND_URI=${FRONTEND_URI}
+      - BACKEND_URL=${BACKEND_URL}
+    secrets:
+      - session_secret
+    depends_on:
+      - mongodb
+    networks:
+      - spotify-tracker-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend-builder
+    container_name: spotify-tracker-frontend-prod
+    restart: unless-stopped
+    expose:
+      - "5173" # Internal port only
+    environment:
+      - NODE_ENV=production
+      - VITE_DOCKER=true
+      - VITE_API_BASE_URL=http://backend:8080/api
+    networks:
+      - spotify-tracker-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: spotify-tracker-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/nginx-secure.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - spotify-tracker-network
+
+networks:
+  spotify-tracker-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+
+secrets:
+  session_secret:
+    external: true
+  mongodb_password:
+    external: true

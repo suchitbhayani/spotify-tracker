@@ -9,8 +9,34 @@ const PORT = process.env.PORT;
 
 const router = express.Router();
 
-const ipv4RedirectUri = `http://127.0.0.1:${PORT}/auth/spotify/callback`;
-const ipv6RedirectUri = `http://[::1]:${PORT}/auth/spotify/callback`;
+// Dynamic redirect URI configuration for different environments
+const getRedirectUri = (req) => {
+  const host = req.get('host');
+  const protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
+  
+  // Production deployment (Docker or hosted)
+  if (process.env.NODE_ENV === 'production') {
+    if (process.env.BACKEND_URL) {
+      return `${process.env.BACKEND_URL}/auth/spotify/callback`;
+    }
+    // Docker production - use environment variable or construct from host
+    return `${protocol}://${host}/auth/spotify/callback`;
+  }
+  
+  // Docker development - use container networking
+  if (process.env.DOCKER === 'true') {
+    return `http://backend:${PORT}/auth/spotify/callback`;
+  }
+  
+  // Local development (non-Docker) - detect IPv4 vs IPv6
+  if (host && host.includes('::1')) {
+    return `http://[::1]:${PORT}/auth/spotify/callback`;
+  } else if (host && host.includes('127.0.0.1')) {
+    return `http://127.0.0.1:${PORT}/auth/spotify/callback`;
+  } else {
+    return `http://localhost:${PORT}/auth/spotify/callback`;
+  }
+};
 
 router.get("/spotify", async (req, res) => {
   if (!CLIENT_ID) {
@@ -35,6 +61,9 @@ router.get("/spotify", async (req, res) => {
   const authUrl = new URL("https://accounts.spotify.com/authorize")
   const scope = "user-follow-read user-top-read";
   
+  // Get the appropriate redirect URI based on the request
+  const redirectUri = getRedirectUri(req);
+  
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
     response_type: 'code',
@@ -42,7 +71,7 @@ router.get("/spotify", async (req, res) => {
     state: state,
     code_challenge_method: 'S256',
     code_challenge: codeChallenge,
-    redirect_uri: ipv6RedirectUri
+    redirect_uri: redirectUri
   });
 
   authUrl.search = new URLSearchParams(params).toString();
@@ -71,12 +100,15 @@ router.get('/spotify/callback', async (req, res) => {
 
   const codeVerifier = req.session.codeVerifier;
 
+  // Get the same redirect URI that was used in the auth request
+  const redirectUri = getRedirectUri(req);
+  
   const url = "https://accounts.spotify.com/api/token";
   const payload = new URLSearchParams({
     client_id: CLIENT_ID,
     grant_type: 'authorization_code',
     code,
-    redirect_uri: ipv6RedirectUri,
+    redirect_uri: redirectUri,
     code_verifier: codeVerifier,
   });
 

@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:4.1
+    container_name: spotify-tracker-mongodb-dev
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_INITDB_DATABASE: spotify_tracker
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - spotify-tracker-network
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: spotify-tracker-backend-dev
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=development
+      - DOCKER=true
+      - PORT=8080
+      - MONGO_URI=mongodb://admin:password@mongodb:27017/spotify_tracker?authSource=admin
+      - MONGO_DB=spotify_tracker
+      - CLIENT_ID=${CLIENT_ID}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - FRONTEND_URI=http://frontend:5173
+    depends_on:
+      - mongodb
+    networks:
+      - spotify-tracker-network
+    volumes:
+      - ./server:/app/server
+      - /app/server/node_modules
+    env_file:
+      - .env
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend-builder
+    container_name: spotify-tracker-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_DOCKER=true
+      - VITE_API_BASE_URL=http://backend:8080/api
+    networks:
+      - spotify-tracker-network
+    volumes:
+      - ./client:/app/client
+      - /app/client/node_modules
+    command: npm run dev
+    depends_on:
+      - backend
+
+networks:
+  spotify-tracker-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
