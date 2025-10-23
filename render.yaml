@@ -1,7 +1,7 @@
 services:
   - type: web
     name: spotify-tracker
-    dockerfilePath: docker-compose.render.yml
+    dockerfilePath: Dockerfile
     plan: free
     healthCheckPath: /health
     envVars:
@@ -18,4 +18,6 @@ services:
       - key: FRONTEND_URI
         sync: false
       - key: BACKEND_URL
+        sync: false
+      - key: ML_SERVICE_URL
         sync: false
