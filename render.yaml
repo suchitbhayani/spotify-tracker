@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: spotify-tracker-fullstack
+    name: spotify-tracker
     dockerfilePath: docker-compose.render.yml
     plan: free
     healthCheckPath: /health
