@@ -1,49 +1,29 @@
-# Multi-stage build for full stack Spotify Tracker
-FROM node:18-alpine AS base
+# Simple full stack Dockerfile for Render
+FROM node:18-alpine
 
 # Install dependencies
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl nginx
 
-# Backend stage
-FROM base AS backend
-WORKDIR /app/server
-COPY server/package*.json ./
-RUN npm ci --only=production
-COPY server/ .
-EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8080/health || exit 1
-
-# Frontend build stage
-FROM base AS frontend-builder
-WORKDIR /app/client
-COPY client/package*.json ./
-RUN npm ci
-COPY client/ .
-RUN npm run build
-
-# Frontend serve stage
-FROM nginx:alpine AS frontend
-COPY --from=frontend-builder /app/client/dist /usr/share/nginx/html
-COPY client/nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost/ || exit 1
-
-# Final stage - run both services
-FROM base AS runner
+# Set working directory
 WORKDIR /app
 
-# Copy backend
-COPY --from=backend /app/server ./server
-COPY --from=backend /app/server/node_modules ./server/node_modules
+# Copy and install backend dependencies
+COPY server/package*.json ./server/
+RUN cd server && npm ci --only=production
 
-# Copy frontend
-COPY --from=frontend /usr/share/nginx/html ./public
-COPY --from=frontend /etc/nginx/conf.d/default.conf /etc/nginx/conf.d/default.conf
+# Copy backend code
+COPY server/ ./server/
 
-# Install nginx
-RUN apk add --no-cache nginx
+# Copy and install frontend dependencies
+COPY client/package*.json ./client/
+RUN cd client && npm ci
+
+# Copy frontend code and build
+COPY client/ ./client/
+RUN cd client && npm run build
+
+# Copy nginx config
+COPY client/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Create startup script
 RUN echo '#!/bin/sh' > /app/start.sh && \
@@ -51,5 +31,12 @@ RUN echo '#!/bin/sh' > /app/start.sh && \
     echo 'cd /app/server && node index.js' >> /app/start.sh && \
     chmod +x /app/start.sh
 
+# Expose ports
 EXPOSE 80 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
+
+# Start both services
 CMD ["/app/start.sh"]
