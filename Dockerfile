@@ -22,8 +22,8 @@ RUN cd client && npm ci
 COPY client/ ./client/
 RUN cd client && npm run build
 
-# Copy nginx config
-COPY client/nginx.conf /etc/nginx/conf.d/default.conf
+# Copy nginx config to main nginx.conf
+COPY nginx.conf /etc/nginx/nginx.conf
 
 # Create nginx directory for static files
 RUN mkdir -p /usr/share/nginx/html
