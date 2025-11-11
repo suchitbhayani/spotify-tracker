@@ -29,22 +29,20 @@ RUN mkdir -p /usr/share/nginx/html \
     /run \
     /etc/supervisor/conf.d \
     /var/log/supervisor && \
-    touch /var/run/nginx.pid && \
-    chown -R nginx:nginx /usr/share/nginx/html \
-    /var/log/nginx \
-    /var/cache/nginx \
-    /var/run/nginx.pid && \
+    chmod -R 777 /var/log/nginx /var/cache/nginx /var/run /run && \
     chmod 755 /var/log/supervisor
 
-# Copy built frontend to nginx
+# Copy built frontend to nginx (no need to change ownership, root can read)
 RUN cp -r /app/client/dist/* /usr/share/nginx/html/ && \
-    chown -R nginx:nginx /usr/share/nginx/html
+    ls -la /usr/share/nginx/html/ && \
+    echo "✅ Frontend files copied successfully"
 
 # Copy nginx config
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# Test nginx configuration
-RUN nginx -t || (echo "❌ Nginx configuration test failed" && exit 1)
+# Test nginx configuration (clean up PID file after test)
+RUN nginx -t || (echo "❌ Nginx configuration test failed" && exit 1) && \
+    rm -f /var/run/nginx.pid || true
 
 # Create supervisor config for nginx + node.js
 RUN echo '[supervisord]' > /etc/supervisor/conf.d/supervisord.conf && \
@@ -57,9 +55,12 @@ RUN echo '[supervisord]' > /etc/supervisor/conf.d/supervisord.conf && \
     echo 'command=nginx -g "daemon off;"' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo 'autostart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'startretries=5' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'startsecs=1' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo 'stderr_logfile=/var/log/supervisor/nginx.err.log' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo 'stdout_logfile=/var/log/supervisor/nginx.out.log' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo 'priority=10' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'stopsignal=QUIT' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo '[program:node]' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo 'command=node /app/server/index.js' >> /etc/supervisor/conf.d/supervisord.conf && \
