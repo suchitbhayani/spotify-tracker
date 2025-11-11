@@ -40,6 +40,10 @@ RUN cp -r /app/client/dist/* /usr/share/nginx/html/ && \
 # Copy nginx config
 COPY nginx.conf /etc/nginx/nginx.conf
 
+# Create startup script
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
 # Test nginx configuration (clean up PID file after test)
 RUN nginx -t || (echo "❌ Nginx configuration test failed" && exit 1) && \
     rm -f /var/run/nginx.pid || true
@@ -55,8 +59,8 @@ RUN echo '[supervisord]' > /etc/supervisor/conf.d/supervisord.conf && \
     echo 'command=nginx -g "daemon off;"' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo 'autostart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'startretries=5' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'startsecs=1' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'startretries=3' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'startsecs=3' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo 'stderr_logfile=/var/log/supervisor/nginx.err.log' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo 'stdout_logfile=/var/log/supervisor/nginx.out.log' >> /etc/supervisor/conf.d/supervisord.conf && \
     echo 'priority=10' >> /etc/supervisor/conf.d/supervisord.conf && \
@@ -79,5 +83,5 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD curl -f http://127.0.0.1/health || exit 1
 
-# Start supervisor (manages nginx + node.js)
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# Start via startup script (ensures directories exist at runtime)
+CMD ["/start.sh"]
