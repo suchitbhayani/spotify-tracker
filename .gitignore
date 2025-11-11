@@ -11,3 +11,9 @@ npm-debug.log*
 .env.local
 # OS cruft, stops slop being committed based on OS
 .DS_Store
+
+# Documentation (ignore all .md files except QUICK_DEPLOYMENT_FIXES.md and README files)
+*.md
+!QUICK_DEPLOYMENT_FIXES.md
+!README.md
+!**/README.md

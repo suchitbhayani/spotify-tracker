@@ -15,9 +15,15 @@ services:
         sync: false
       - key: MONGO_URI
         sync: false
+      - key: MONGO_DB
+        sync: false
       - key: FRONTEND_URI
+        sync: false
+      - key: FRONTEND_URL
         sync: false
       - key: BACKEND_URL
         sync: false
-      - key: ML_SERVICE_URL
+      - key: SPOTIFY_REDIRECT_URI
         sync: false
+      - key: FORCE_HTTPS
+        value: "true"

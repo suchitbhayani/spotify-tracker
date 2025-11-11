@@ -11,28 +11,41 @@ const router = express.Router();
 
 // Dynamic redirect URI configuration for different environments
 const getRedirectUri = (req) => {
-  const host = req.get('host');
+  // Priority 1: Explicit environment variable (most reliable)
+  if (process.env.SPOTIFY_REDIRECT_URI) {
+    return process.env.SPOTIFY_REDIRECT_URI;
+  }
+
+  // Priority 2: BACKEND_URL environment variable
+  if (process.env.BACKEND_URL) {
+    return `${process.env.BACKEND_URL}/auth/spotify/callback`;
+  }
+
+  // Priority 3: Detect from request headers (works behind nginx proxy)
+  const host = req.get('x-forwarded-host') || req.get('host');
   const protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
   
-  // Production deployment (Docker or hosted)
+  // Production deployment (behind nginx proxy)
   if (process.env.NODE_ENV === 'production') {
-    if (process.env.BACKEND_URL) {
-      return `${process.env.BACKEND_URL}/auth/spotify/callback`;
+    if (host) {
+      // Use HTTPS in production if x-forwarded-proto is https or if behind HTTPS proxy
+      const useHttps = protocol === 'https' || process.env.FORCE_HTTPS === 'true';
+      return `${useHttps ? 'https' : 'http'}://${host}/auth/spotify/callback`;
     }
-    // Docker production - use environment variable or construct from host
-    return `${protocol}://${host}/auth/spotify/callback`;
   }
   
   // Docker development - use container networking
-  if (process.env.DOCKER === 'true') {
+  if (process.env.DOCKER === 'true' && process.env.NODE_ENV !== 'production') {
     return `http://backend:${PORT}/auth/spotify/callback`;
   }
   
   // Local development (non-Docker) - detect IPv4 vs IPv6
-  if (host && host.includes('::1')) {
+  if (host && (host.includes('::1') || host.includes('[::1]'))) {
     return `http://[::1]:${PORT}/auth/spotify/callback`;
   } else if (host && host.includes('127.0.0.1')) {
     return `http://127.0.0.1:${PORT}/auth/spotify/callback`;
+  } else if (host) {
+    return `${protocol}://${host}/auth/spotify/callback`;
   } else {
     return `http://localhost:${PORT}/auth/spotify/callback`;
   }
@@ -63,6 +76,7 @@ router.get("/spotify", async (req, res) => {
   
   // Get the appropriate redirect URI based on the request
   const redirectUri = getRedirectUri(req);
+  console.log(`🔗 Using redirect URI: ${redirectUri}`);
   
   const params = new URLSearchParams({
     client_id: CLIENT_ID,

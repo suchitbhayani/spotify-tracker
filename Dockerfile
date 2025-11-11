@@ -1,48 +1,82 @@
-# Simple full stack Dockerfile for Render
-FROM node:18-alpine
+# Minimal Dockerfile for OAuth + Top Artists deployment
+# Removed ML service and dataset dependencies
+FROM node:20-alpine
 
-# Install dependencies
-RUN apk add --no-cache curl nginx
+# Install minimal dependencies (nginx for frontend, curl for health checks)
+RUN apk add --no-cache curl nginx supervisor
 
 # Set working directory
 WORKDIR /app
 
-# Copy and install backend dependencies
+# Install backend dependencies
 COPY server/package*.json ./server/
 RUN cd server && npm ci --only=production
 
 # Copy backend code
 COPY server/ ./server/
 
-# Copy and install frontend dependencies
+# Install and build frontend
 COPY client/package*.json ./client/
 RUN cd client && npm ci
-
-# Copy frontend code and build
 COPY client/ ./client/
 RUN cd client && npm run build
 
-# Copy nginx config to main nginx.conf
+# Setup nginx directories and permissions
+RUN mkdir -p /usr/share/nginx/html \
+    /var/log/nginx \
+    /var/cache/nginx \
+    /var/run \
+    /run \
+    /etc/supervisor/conf.d \
+    /var/log/supervisor && \
+    touch /var/run/nginx.pid && \
+    chown -R nginx:nginx /usr/share/nginx/html \
+    /var/log/nginx \
+    /var/cache/nginx \
+    /var/run/nginx.pid && \
+    chmod 755 /var/log/supervisor
+
+# Copy built frontend to nginx
+RUN cp -r /app/client/dist/* /usr/share/nginx/html/ && \
+    chown -R nginx:nginx /usr/share/nginx/html
+
+# Copy nginx config
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# Create nginx directory for static files
-RUN mkdir -p /usr/share/nginx/html
+# Test nginx configuration
+RUN nginx -t || (echo "❌ Nginx configuration test failed" && exit 1)
 
-# Copy built frontend to nginx directory
-RUN cp -r /app/client/dist/* /usr/share/nginx/html/
+# Create supervisor config for nginx + node.js
+RUN echo '[supervisord]' > /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'nodaemon=true' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'user=root' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'logfile=/var/log/supervisor/supervisord.log' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'pidfile=/var/run/supervisord.pid' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo '[program:nginx]' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'command=nginx -g "daemon off;"' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'autostart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'stderr_logfile=/var/log/supervisor/nginx.err.log' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'stdout_logfile=/var/log/supervisor/nginx.out.log' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'priority=10' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo '[program:node]' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'command=node /app/server/index.js' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'directory=/app/server' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'autostart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'stderr_logfile=/var/log/supervisor/node.err.log' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'stdout_logfile=/var/log/supervisor/node.out.log' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'priority=20' >> /etc/supervisor/conf.d/supervisord.conf && \
+    echo 'environment=NODE_ENV="production"' >> /etc/supervisor/conf.d/supervisord.conf
 
-# Create startup script
-RUN echo '#!/bin/sh' > /app/start.sh && \
-    echo 'nginx -g "daemon off;" &' >> /app/start.sh && \
-    echo 'cd /app/server && node index.js' >> /app/start.sh && \
-    chmod +x /app/start.sh
+# Expose port 80 (Render uses this)
+EXPOSE 80
 
-# Expose ports
-EXPOSE 80 8080
+# Health check through nginx
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://127.0.0.1/health || exit 1
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8080/health || exit 1
-
-# Start both services
-CMD ["/app/start.sh"]
+# Start supervisor (manages nginx + node.js)
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
