@@ -119,9 +119,20 @@ rtdouRWMo93iVJAR9zm/TC5qG3ZZJ6isk4kFLktm42ZW8dcniWh+fPMPnVxxeCDZ0ApLJy8
         });
       } else if (status === 403) {
         console.error("❌ 403 Forbidden - insufficient permissions");
+        const spotifyError = errorData?.error || (typeof errorData === 'string' ? errorData : 'Unknown error');
+        
+        // Check for specific Spotify error messages
+        let userMessage = "Insufficient permissions to access top artists. Please reconnect with proper permissions.";
+        if (typeof spotifyError === 'string' && spotifyError.includes('not be registered')) {
+          userMessage = "Your Spotify account needs to be added to the app's user allowlist. Please contact the app administrator or check developer.spotify.com/dashboard.";
+        } else if (typeof spotifyError === 'string' && spotifyError.includes('developer.spotify.com')) {
+          userMessage = "Please check the Spotify Developer Dashboard settings. Your account may need to be added to the app's user allowlist.";
+        }
+        
         return res.status(403).json({ 
-          error: "Insufficient permissions to access top artists. Please reconnect with proper permissions.",
-          code: "INSUFFICIENT_PERMISSIONS"
+          error: userMessage,
+          code: "INSUFFICIENT_PERMISSIONS",
+          details: typeof errorData === 'string' ? errorData : errorData?.error?.message || spotifyError
         });
       } else if (status === 429) {
         console.error("❌ 429 Rate limited by Spotify");
