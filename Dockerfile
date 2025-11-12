@@ -48,40 +48,19 @@ RUN chmod +x /start.sh
 RUN nginx -t || (echo "❌ Nginx configuration test failed" && exit 1) && \
     rm -f /var/run/nginx.pid || true
 
-# Create supervisor config for nginx + node.js
-RUN echo '[supervisord]' > /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'nodaemon=true' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'user=root' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'logfile=/var/log/supervisor/supervisord.log' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'pidfile=/var/run/supervisord.pid' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo '[program:nginx]' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'command=nginx -g "daemon off;"' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'autostart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'startretries=3' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'startsecs=3' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'stderr_logfile=/var/log/supervisor/nginx.err.log' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'stdout_logfile=/var/log/supervisor/nginx.out.log' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'priority=10' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'stopsignal=QUIT' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo '[program:node]' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'command=node /app/server/index.js' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'directory=/app/server' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'autostart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'stderr_logfile=/var/log/supervisor/node.err.log' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'stdout_logfile=/var/log/supervisor/node.out.log' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'priority=20' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'environment=NODE_ENV="production"' >> /etc/supervisor/conf.d/supervisord.conf
+# Copy supervisor config file
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Expose port 80 (Render uses this)
-EXPOSE 80
+# Expose port 10000 (Render's default for web services)
+# Render automatically sets PORT=10000 and routes traffic here
+# start.sh will update nginx to listen on ${PORT} at runtime
+EXPOSE 10000
 
 # Health check through nginx
+# Note: Render's own health check (healthCheckPath: /health) is more reliable
+# This healthcheck may fail if nginx hasn't started yet
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://127.0.0.1/health || exit 1
+  CMD curl -f http://127.0.0.1:${PORT:-10000}/health || exit 1
 
 # Start via startup script (ensures directories exist at runtime)
 CMD ["/start.sh"]

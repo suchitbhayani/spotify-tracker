@@ -7,8 +7,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 8080
+      # PORT is automatically set by Render to 10000 - do not override it
+      # nginx will listen on ${PORT} (10000) and proxy to backend on port 3000
       - key: CLIENT_ID
         sync: false
       - key: SESSION_SECRET
