@@ -85,20 +85,77 @@ function App() {
   // Step 2: Get top artists from Spotify
   const fetchTopArtists = async () => {
     try {
+      console.log('🎵 Fetching top artists from:', `${API_BASE}/api/top_artists`);
       setLoading(true);
-      const response = await fetch(`${API_BASE}/api/top_artists`, { credentials: 'include' });
-      const data = await response.json();
-      if (response.ok) {
-        setSpotifyArtists(data.artistNames.map((name: string, index: number) => ({
-          name,
-          spotifyImageURL: data.artistImageURLs[index],
-          spotifyRank: index + 1,
-        })));
+      const response = await fetch(`${API_BASE}/api/top_artists`, {
+        credentials: 'include',
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      console.log('🎵 Top artists response status:', response.status, response.statusText);
+
+      // Check if response is JSON before parsing
+      const contentType = response.headers.get('content-type');
+      let data;
+      
+      if (contentType && contentType.includes('application/json')) {
+        try {
+          data = await response.json();
+        } catch (jsonError) {
+          console.error('❌ Failed to parse JSON response:', jsonError);
+          const text = await response.text();
+          console.error('❌ Response text:', text.substring(0, 200));
+          alert('Failed to fetch top artists: Invalid response from server. Please try again.');
+          return;
+        }
       } else {
-        console.error('Failed to fetch top artists:', data.error);
+        const text = await response.text();
+        console.error('❌ Non-JSON response received:', text.substring(0, 200));
+        alert(`Failed to fetch top artists: Server returned ${response.status} ${response.statusText}`);
+        if (response.status === 401) {
+          setIsAuthenticated(false);
+        }
+        return;
+      }
+
+      if (response.ok) {
+        console.log('✅ Top artists data received:', data);
+        
+        if (data.artistNames && Array.isArray(data.artistNames) && data.artistNames.length > 0) {
+          const artists = data.artistNames.map((name: string, index: number) => ({
+            name,
+            spotifyImageURL: data.artistImageURLs?.[index] || '',
+            spotifyRank: index + 1,
+          }));
+          console.log(`✅ Setting ${artists.length} artists in state`);
+          setSpotifyArtists(artists);
+        } else {
+          console.warn('⚠️ No artists in response or invalid format');
+          console.warn('⚠️ Response data:', data);
+          alert('No top artists found. You may need to listen to more music on Spotify first.');
+        }
+      } else {
+        console.error('❌ Failed to fetch top artists:', data);
+        const errorMessage = data.error || data.message || 'Unknown error';
+        const errorCode = data.code || 'UNKNOWN_ERROR';
+        
+        if (response.status === 401 || errorCode === 'AUTH_EXPIRED') {
+          console.error('❌ 401 Unauthorized - access token may be missing or expired');
+          setIsAuthenticated(false);
+          alert('Your Spotify session has expired. Please reconnect your account.');
+        } else if (response.status === 403 || errorCode === 'INSUFFICIENT_PERMISSIONS') {
+          alert('Insufficient permissions. Please reconnect your Spotify account with proper permissions.');
+        } else if (response.status === 429 || errorCode === 'RATE_LIMITED') {
+          alert('Rate limited by Spotify. Please try again in a few minutes.');
+        } else {
+          alert(`Failed to fetch top artists: ${errorMessage}`);
+        }
       }
     } catch (error) {
-      console.error('Error fetching top artists:', error);
+      console.error('❌ Error fetching top artists:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Network error';
+      alert(`Failed to fetch top artists: ${errorMessage}. Please check your connection and try again.`);
     } finally {
       setLoading(false);
     }

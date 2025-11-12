@@ -86,8 +86,72 @@ rtdouRWMo93iVJAR9zm/TC5qG3ZZJ6isk4kFLktm42ZW8dcniWh+fPMPnVxxeCDZ0ApLJy8
       artistImageURLs: artistImagesURLs,
     });
   } catch (e) {
-    console.error("Spotify GET request failed:", e.message);
-    return res.status(e.status).json({ error: "Failed to fetch top artists from Spotify" });
+    console.error("❌ Spotify GET request failed:", e.message);
+    console.error("❌ Error details:", {
+      status: e.response?.status,
+      statusText: e.response?.statusText,
+      data: e.response?.data,
+      message: e.message,
+      code: e.code
+    });
+    
+    // Log the full error response from Spotify for 403 errors
+    if (e.response?.status === 403) {
+      console.error("❌ 403 Forbidden - Full Spotify error response:", JSON.stringify(e.response.data, null, 2));
+      console.error("❌ This usually means:");
+      console.error("❌   1. The access token doesn't have 'user-top-read' scope");
+      console.error("❌   2. The user hasn't granted permission to access their top artists");
+      console.error("❌   3. The Spotify app doesn't have the required permissions");
+      console.error("❌ Current access token (first 20 chars):", access_token ? access_token.substring(0, 20) + '...' : 'MISSING');
+    }
+    
+    // Handle different error types
+    if (e.response) {
+      // Spotify API returned an error
+      const status = e.response.status;
+      const errorData = e.response.data;
+      
+      if (status === 401) {
+        console.error("❌ 401 Unauthorized - access token expired or invalid");
+        return res.status(401).json({ 
+          error: "Spotify authentication expired. Please reconnect your Spotify account.",
+          code: "AUTH_EXPIRED"
+        });
+      } else if (status === 403) {
+        console.error("❌ 403 Forbidden - insufficient permissions");
+        return res.status(403).json({ 
+          error: "Insufficient permissions to access top artists. Please reconnect with proper permissions.",
+          code: "INSUFFICIENT_PERMISSIONS"
+        });
+      } else if (status === 429) {
+        console.error("❌ 429 Rate limited by Spotify");
+        return res.status(429).json({ 
+          error: "Rate limited by Spotify. Please try again later.",
+          code: "RATE_LIMITED"
+        });
+      } else {
+        return res.status(status || 500).json({ 
+          error: "Failed to fetch top artists from Spotify",
+          details: errorData?.error?.message || e.message,
+          code: "SPOTIFY_API_ERROR"
+        });
+      }
+    } else if (e.request) {
+      // Request was made but no response received
+      console.error("❌ No response from Spotify API");
+      return res.status(503).json({ 
+        error: "Could not reach Spotify API. Please try again later.",
+        code: "NETWORK_ERROR"
+      });
+    } else {
+      // Error setting up the request
+      console.error("❌ Error setting up request:", e.message);
+      return res.status(500).json({ 
+        error: "Failed to fetch top artists from Spotify",
+        details: e.message,
+        code: "REQUEST_ERROR"
+      });
+    }
   }
 });
 

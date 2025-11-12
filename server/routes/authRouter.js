@@ -318,6 +318,14 @@ router.get('/spotify/callback', async (req, res) => {
     req.session.refresh_token = tokenData.refresh_token;
     req.session.token_expires_at = Date.now() + (tokenData.expires_in * 1000);
     
+    // Log the scopes granted (if available)
+    if (tokenData.scope) {
+      console.log(`✅ Token scopes granted: ${tokenData.scope}`);
+      console.log(`✅ Required scope 'user-top-read' present: ${tokenData.scope.includes('user-top-read') ? 'YES' : 'NO'}`);
+    } else {
+      console.warn("⚠️ No scope information in token response - this may cause permission issues");
+    }
+    
     console.log(`✅ OAuth successful! Access token stored in session`);
     console.log(`🔗 Redirecting to frontend: ${req.session.redirectURI}`);
     console.log(`🍪 Session ID: ${req.sessionID}`);
