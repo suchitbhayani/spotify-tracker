@@ -122,10 +122,14 @@ const sessionConfig = {
   saveUninitialized: true, // Save session even if empty (needed for OAuth state)
   name: 'spotify-session', // Custom session name
   cookie: {
-    sameSite: 'lax', // 'lax' works for OAuth redirects (allows cross-site redirects)
+    // CRITICAL: Use 'none' for OAuth redirects from external domains (Spotify)
+    // 'lax' blocks cookies on cross-site redirects, which breaks OAuth
+    // 'none' requires secure: true (HTTPS)
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     httpOnly: true, // Prevent XSS attacks
     // Use secure cookies in production (HTTPS required)
     // Behind nginx with HTTPS, cookies must be secure
+    // CRITICAL: sameSite: 'none' REQUIRES secure: true
     secure: process.env.NODE_ENV === 'production' && process.env.FORCE_HTTPS !== 'false',
     priority: 'high',
     // Set maxAge for session expiration (24 hours)

@@ -141,15 +141,26 @@ router.get("/spotify", async (req, res) => {
   console.log(`🔗 Full authorization URL (first 200 chars): ${authUrl.toString().substring(0, 200)}...`);
   
   // Session was already saved above, now redirect to Spotify
-  // The session cookie should be set automatically by express-session middleware
-  // when we call res.redirect(), but we log to verify
+  // CRITICAL: We need to ensure the cookie is set BEFORE redirecting
+  // express-session should set it automatically, but let's verify the cookie is in the response
   console.log(`🔗 Redirecting to Spotify authorization URL`);
-  console.log(`🍪 Check browser DevTools → Application → Cookies after redirect to see if cookie is set`);
+  console.log(`🍪 Session cookie should be set in Set-Cookie header`);
+  
+  // Set a response header to verify the redirect is happening
+  // The session middleware should have already set the Set-Cookie header
+  // But we can't access it directly - express-session handles it internally
+  
+  // Redirect to Spotify - the session cookie should be sent with this redirect
   res.redirect(authUrl.toString());
 });
 
 router.get('/spotify/callback', async (req, res) => {
   const {code, error, state} = req.query;
+  
+  // Log immediately when callback is hit
+  console.log(`\n🔔 ===== SPOTIFY CALLBACK HIT =====`);
+  console.log(`🔔 Query params: code=${code ? 'present' : 'missing'}, state=${state || 'missing'}, error=${error || 'none'}`);
+  console.log(`🔔 Full URL: ${req.protocol}://${req.get('host')}${req.originalUrl}`);
   
   if (error) {
     console.error("❌ Spotify auth code error:", error);
@@ -162,9 +173,19 @@ router.get('/spotify/callback', async (req, res) => {
     return res.status(400).send(`Authorization failed: ${error}. Check server logs for details.`);
   }
   
+  if (!code) {
+    console.error("❌ ERROR: No authorization code received from Spotify!");
+    return res.status(400).send("No authorization code received. Please try again.");
+  }
+  
+  if (!state) {
+    console.error("❌ ERROR: No state parameter received from Spotify!");
+    return res.status(400).send("No state parameter received. Please try again.");
+  }
+  
   console.log(`🔍 Callback - Received state from Spotify: "${state}"`);
-  console.log(`🔍 Callback - Stored state in session: "${req.session.state}"`);
-  console.log(`🍪 Callback - Session ID: ${req.sessionID}`);
+  console.log(`🔍 Callback - Stored state in session: "${req.session.state || 'MISSING'}"`);
+  console.log(`🍪 Callback - Session ID: ${req.sessionID || 'MISSING'}`);
   console.log(`🔍 Callback - Session has state: ${!!req.session.state}`);
   console.log(`🔍 Callback - Session has codeVerifier: ${!!req.session.codeVerifier}`);
   console.log(`🔍 Callback - Session has redirectURI: ${!!req.session.redirectURI}`);
@@ -202,23 +223,33 @@ router.get('/spotify/callback', async (req, res) => {
     console.error("❌   3. Cookie secure flag mismatch (HTTPS vs HTTP)");
     console.error("❌   4. Cookie SameSite blocking cross-site redirect");
     console.error("❌   5. Browser blocking third-party cookies");
+    console.error(`❌ Current cookie settings:`);
+    console.error(`❌   - secure: ${process.env.NODE_ENV === 'production' && process.env.FORCE_HTTPS !== 'false'}`);
+    console.error(`❌   - sameSite: ${process.env.NODE_ENV === 'production' ? 'none' : 'lax'}`);
+    console.error(`❌   - httpOnly: true`);
+    console.error(`❌   - domain: undefined (same domain)`);
+    console.error(`❌   - path: /`);
+    console.error(`❌   - FORCE_HTTPS env var: ${process.env.FORCE_HTTPS || 'not set'}`);
     return res.status(400).send("Session cookie not found. Please try connecting again.");
   }
   
   if (!req.session.state) {
     console.error("❌ ERROR: No state in session! Session exists but has no state.");
     console.error(`❌ Session ID: ${req.sessionID}`);
-    console.error(`❌ Session keys: ${Object.keys(req.session).join(', ')}`);
+    console.error(`❌ Session keys: ${Object.keys(req.session).join(', ') || 'empty session'}`);
     console.error("❌ This usually means:");
     console.error("❌   1. Session was created but state wasn't saved");
     console.error("❌   2. Session was cleared/reset");
     console.error("❌   3. Different session ID (new session created)");
     console.error(`❌ Current session cookie settings:`);
     console.error(`❌   - secure: ${process.env.NODE_ENV === 'production' && process.env.FORCE_HTTPS !== 'false'}`);
-    console.error(`❌   - sameSite: lax`);
+    console.error(`❌   - sameSite: ${process.env.NODE_ENV === 'production' ? 'none' : 'lax'}`);
     console.error(`❌   - httpOnly: true`);
     console.error(`❌   - domain: undefined (same domain)`);
     console.error(`❌   - path: /`);
+    console.error(`❌   - FORCE_HTTPS env var: ${process.env.FORCE_HTTPS || 'not set'}`);
+    console.error(`❌ Received state from Spotify: "${state}"`);
+    console.error(`❌ But session has no state stored!`);
     return res.status(400).send("Session expired. Please try connecting again.");
   }
   
