@@ -68,7 +68,11 @@ router.get("/spotify", async (req, res) => {
     return res.status(400).send('No redirect URI callback specified for endpoint');
   }
   
-  req.session.redirectURI = redirectURI;
+  // Decode the redirect URI from query parameter
+  const decodedRedirectURI = decodeURIComponent(redirectURI);
+  req.session.redirectURI = decodedRedirectURI;
+  console.log(`🔗 Stored frontend redirect URI in session: ${decodedRedirectURI}`);
+  console.log(`🍪 Session ID: ${req.sessionID}`);
 
   const state = pkce.generateState(16);
   const codeVerifier = pkce.generateCodeVerifier(64);
@@ -76,6 +80,19 @@ router.get("/spotify", async (req, res) => {
   
   req.session.state = state;
   req.session.codeVerifier = codeVerifier;
+  
+  // Save session BEFORE redirecting to Spotify (critical for state persistence)
+  await new Promise((resolve, reject) => {
+    req.session.save((err) => {
+      if (err) {
+        console.error("❌ Failed to save session before Spotify redirect:", err.message);
+        return reject(err);
+      }
+      console.log("✅ Session saved with state and codeVerifier before Spotify redirect");
+      console.log(`🍪 Session ID after save: ${req.sessionID}`);
+      resolve();
+    });
+  });
 
   const authUrl = new URL("https://accounts.spotify.com/authorize")
   const scope = "user-follow-read user-top-read";
@@ -104,14 +121,9 @@ router.get("/spotify", async (req, res) => {
   const encodedRedirectUri = encodeURIComponent(redirectUri);
   console.log(`🔗 Encoded redirect_uri in URL: "${encodedRedirectUri}"`);
   console.log(`🔗 Full authorization URL (first 200 chars): ${authUrl.toString().substring(0, 200)}...`);
-  req.session.save(err => {
-    if (err) {
-      console.error("Failed to save session:", err.message);
-      return res.status(500).send("Couldn't save session");
-    }
-    
-    res.redirect(authUrl);
-  });
+  
+  // Session was already saved above, now redirect to Spotify
+  res.redirect(authUrl.toString());
 });
 
 router.get('/spotify/callback', async (req, res) => {
@@ -128,10 +140,30 @@ router.get('/spotify/callback', async (req, res) => {
     return res.status(400).send(`Authorization failed: ${error}. Check server logs for details.`);
   }
   
-  if (state !== req.session.state) {
-    console.error("Spotify auth error: Mismatching request states");
-    return res.status(409).send("Invalid State");
+  console.log(`🔍 Callback - Received state from Spotify: "${state}"`);
+  console.log(`🔍 Callback - Stored state in session: "${req.session.state}"`);
+  console.log(`🍪 Callback - Session ID: ${req.sessionID}`);
+  console.log(`🔍 Callback - Session has state: ${!!req.session.state}`);
+  console.log(`🔍 Callback - Session has codeVerifier: ${!!req.session.codeVerifier}`);
+  
+  if (!req.session.state) {
+    console.error("❌ ERROR: No state in session! Session may have been lost.");
+    console.error("❌ This usually means:");
+    console.error("❌   1. Session cookie not being set/sent correctly");
+    console.error("❌   2. Session expired or cleared");
+    console.error("❌   3. Cookie domain/path/secure settings incorrect");
+    return res.status(400).send("Session expired. Please try connecting again.");
   }
+  
+  if (state !== req.session.state) {
+    console.error("❌ ERROR: State mismatch!");
+    console.error(`❌ Received from Spotify: "${state}"`);
+    console.error(`❌ Stored in session: "${req.session.state}"`);
+    console.error("❌ This usually means the session was lost or corrupted during redirect");
+    return res.status(409).send("Invalid State - session may have expired. Please try again.");
+  }
+  
+  console.log("✅ State matches - proceeding with token exchange");
 
   const codeVerifier = req.session.codeVerifier;
 
@@ -175,17 +207,44 @@ router.get('/spotify/callback', async (req, res) => {
       return res.status(400).send(`Authorization failed: ${tokenData.error}. Check server logs for details.`);
     }
 
-    req.session.access_token = tokenData.access_token; 
+    req.session.access_token = tokenData.access_token;
+    req.session.refresh_token = tokenData.refresh_token;
+    req.session.token_expires_at = Date.now() + (tokenData.expires_in * 1000);
+    
+    console.log(`✅ OAuth successful! Access token stored in session`);
+    console.log(`🔗 Redirecting to frontend: ${req.session.redirectURI}`);
+    console.log(`🍪 Session ID: ${req.sessionID}`);
 
     if (!req.session.redirectURI) {
-      return res.status(400).send('No callback URI specified after auth')
+      console.error("❌ No redirect URI in session - using fallback");
+      // Fallback to frontend URL if redirectURI is missing
+      const fallbackUrl = process.env.FRONTEND_URL || process.env.FRONTEND_URI || 'https://spotify-tracker-fullstack.onrender.com';
+      console.log(`🔗 Using fallback URL: ${fallbackUrl}`);
+      return res.redirect(fallbackUrl);
     }
+    
+    // Construct redirect URL with auth success parameter
+    let redirectUrl;
+    try {
+      redirectUrl = new URL(req.session.redirectURI);
+      redirectUrl.searchParams.set('auth', 'success');
+      console.log(`✅ Session saved successfully, redirecting to: ${redirectUrl.toString()}`);
+    } catch (urlError) {
+      console.error("❌ Error constructing redirect URL:", urlError.message);
+      console.error("❌ Redirect URI was:", req.session.redirectURI);
+      // Fallback: use frontend URL from environment
+      const fallbackUrl = process.env.FRONTEND_URL || process.env.FRONTEND_URI || 'https://spotify-tracker-fullstack.onrender.com';
+      redirectUrl = new URL(fallbackUrl);
+      redirectUrl.searchParams.set('auth', 'success');
+      console.log(`🔗 Using fallback URL: ${redirectUrl.toString()}`);
+    }
+    
     req.session.save(err => {
       if (err) {
-        console.error("Failed to save session:", err.message);
+        console.error("❌ Failed to save session:", err.message);
         return res.status(500).send("Couldn't save session");
       }
-      res.redirect(`${req.session.redirectURI}`);
+      res.redirect(redirectUrl.toString());
     });
 
   } catch(e) {
