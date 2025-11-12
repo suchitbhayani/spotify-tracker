@@ -204,8 +204,9 @@ router.get('/spotify/callback', async (req, res) => {
     const cookiePairs = cookiesReceived.split(';').map(c => c.trim());
     console.log(`🍪 Callback - Cookie count: ${cookiePairs.length}`);
     cookiePairs.forEach((cookie, idx) => {
-      const [name] = cookie.split('=');
-      console.log(`🍪 Callback - Cookie ${idx + 1}: ${name}${(name === 'connect.sid' || name === 'spotify-session') ? ' ✅' : ''}`);
+      const [name, value] = cookie.split('=');
+      const isSessionCookie = (name === 'connect.sid' || name === 'spotify-session');
+      console.log(`🍪 Callback - Cookie ${idx + 1}: ${name}${isSessionCookie ? ' ✅' : ''}${isSessionCookie ? ` (value: ${value ? value.substring(0, 20) + '...' : 'empty'})` : ''}`);
     });
   }
   
@@ -216,6 +217,10 @@ router.get('/spotify/callback', async (req, res) => {
     origin: req.get('origin'),
     referer: req.get('referer')
   })}`);
+  
+  // Log if this is a new session (different from the one we saved)
+  console.log(`🔍 Callback - Is this a new session? ${!req.session.state ? 'YES (no state)' : 'NO (has state)'}`);
+  console.log(`🔍 Callback - Session was just created: ${req.session.cookie ? 'NO (existing)' : 'YES (new)'}`);
   
   // Check if this is a new session (no session ID or different session)
   if (!req.sessionID) {

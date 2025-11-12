@@ -132,7 +132,9 @@ const sessionConfig = {
     // Use secure cookies in production (HTTPS required)
     // Behind nginx with HTTPS, cookies must be secure
     // CRITICAL: sameSite: 'none' REQUIRES secure: true
-    secure: process.env.NODE_ENV === 'production' && process.env.FORCE_HTTPS !== 'false',
+    // In production, always use secure cookies (HTTPS required)
+    // The 'trust proxy' setting ensures express-session knows we're behind HTTPS
+    secure: process.env.NODE_ENV === 'production',
     priority: 'high',
     // Set maxAge for session expiration (24 hours)
     maxAge: 24 * 60 * 60 * 1000,
