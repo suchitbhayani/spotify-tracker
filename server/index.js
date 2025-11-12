@@ -120,7 +120,9 @@ const sessionConfig = {
   secret: process.env.SESSION_SECRET || 'fallback-secret-change-in-production',
   resave: false,
   saveUninitialized: true, // Save session even if empty (needed for OAuth state)
-  name: 'spotify-session', // Custom session name
+  // CRITICAL: Use default cookie name 'connect.sid' to match what browser sends
+  // Custom names can cause cookie mismatches across redirects
+  name: 'connect.sid', // Use default name to ensure cookie persistence
   cookie: {
     // CRITICAL: Use 'none' for OAuth redirects from external domains (Spotify)
     // 'lax' blocks cookies on cross-site redirects, which breaks OAuth

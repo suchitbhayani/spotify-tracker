@@ -95,10 +95,11 @@ router.get("/spotify", async (req, res) => {
       console.log(`🍪 Session has codeVerifier: ${!!req.session.codeVerifier}`);
       console.log(`🍪 Session cookie will be set with:`);
       console.log(`   - secure: ${process.env.NODE_ENV === 'production' && process.env.FORCE_HTTPS !== 'false'}`);
-      console.log(`   - sameSite: lax`);
+      console.log(`   - sameSite: ${process.env.NODE_ENV === 'production' ? 'none' : 'lax'}`);
       console.log(`   - httpOnly: true`);
       console.log(`   - path: /`);
       console.log(`   - domain: ${process.env.COOKIE_DOMAIN || 'undefined (same domain)'}`);
+      console.log(`   - name: connect.sid`);
       
       // Force cookie to be set by accessing res.cookie or ensuring session middleware runs
       // The session middleware should set the cookie automatically, but we log it
@@ -193,7 +194,10 @@ router.get('/spotify/callback', async (req, res) => {
   // Check if cookies are being sent
   const cookiesReceived = req.headers.cookie || 'none';
   console.log(`🍪 Callback - Cookies received: ${cookiesReceived}`);
-  console.log(`🍪 Callback - Looking for session cookie: ${cookiesReceived.includes('spotify-session') ? 'FOUND' : 'NOT FOUND'}`);
+  // Check for both 'connect.sid' (default) and 'spotify-session' (custom) cookie names
+  const sessionCookieName = process.env.SESSION_COOKIE_NAME || 'connect.sid';
+  const hasSessionCookie = cookiesReceived.includes('connect.sid') || cookiesReceived.includes('spotify-session');
+  console.log(`🍪 Callback - Looking for session cookie (${sessionCookieName}): ${hasSessionCookie ? 'FOUND' : 'NOT FOUND'}`);
   
   // Parse cookies to see what we got
   if (cookiesReceived !== 'none') {
@@ -201,7 +205,7 @@ router.get('/spotify/callback', async (req, res) => {
     console.log(`🍪 Callback - Cookie count: ${cookiePairs.length}`);
     cookiePairs.forEach((cookie, idx) => {
       const [name] = cookie.split('=');
-      console.log(`🍪 Callback - Cookie ${idx + 1}: ${name}${name === 'spotify-session' ? ' ✅' : ''}`);
+      console.log(`🍪 Callback - Cookie ${idx + 1}: ${name}${(name === 'connect.sid' || name === 'spotify-session') ? ' ✅' : ''}`);
     });
   }
   
