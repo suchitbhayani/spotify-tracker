@@ -82,6 +82,7 @@ router.get("/spotify", async (req, res) => {
   req.session.codeVerifier = codeVerifier;
   
   // Save session BEFORE redirecting to Spotify (critical for state persistence)
+  // We need to save the session and ensure the cookie is set before redirecting
   await new Promise((resolve, reject) => {
     req.session.save((err) => {
       if (err) {
@@ -90,6 +91,23 @@ router.get("/spotify", async (req, res) => {
       }
       console.log("✅ Session saved with state and codeVerifier before Spotify redirect");
       console.log(`🍪 Session ID after save: ${req.sessionID}`);
+      console.log(`🍪 Session state value: "${req.session.state}"`);
+      console.log(`🍪 Session has codeVerifier: ${!!req.session.codeVerifier}`);
+      console.log(`🍪 Session cookie will be set with:`);
+      console.log(`   - secure: ${process.env.NODE_ENV === 'production' && process.env.FORCE_HTTPS !== 'false'}`);
+      console.log(`   - sameSite: lax`);
+      console.log(`   - httpOnly: true`);
+      console.log(`   - path: /`);
+      console.log(`   - domain: ${process.env.COOKIE_DOMAIN || 'undefined (same domain)'}`);
+      
+      // Force cookie to be set by accessing res.cookie or ensuring session middleware runs
+      // The session middleware should set the cookie automatically, but we log it
+      if (res.headersSent) {
+        console.warn("⚠️ Response headers already sent - cookie may not be set!");
+      } else {
+        console.log("✅ Response headers not sent yet - cookie will be set on redirect");
+      }
+      
       resolve();
     });
   });
@@ -145,6 +163,17 @@ router.get('/spotify/callback', async (req, res) => {
   console.log(`🍪 Callback - Session ID: ${req.sessionID}`);
   console.log(`🔍 Callback - Session has state: ${!!req.session.state}`);
   console.log(`🔍 Callback - Session has codeVerifier: ${!!req.session.codeVerifier}`);
+  console.log(`🔍 Callback - Session has redirectURI: ${!!req.session.redirectURI}`);
+  
+  // Check if cookies are being sent
+  console.log(`🍪 Callback - Cookies received: ${JSON.stringify(req.headers.cookie || 'none')}`);
+  console.log(`🍪 Callback - Request headers: ${JSON.stringify({
+    host: req.get('host'),
+    'x-forwarded-host': req.get('x-forwarded-host'),
+    'x-forwarded-proto': req.get('x-forwarded-proto'),
+    origin: req.get('origin'),
+    referer: req.get('referer')
+  })}`);
   
   if (!req.session.state) {
     console.error("❌ ERROR: No state in session! Session may have been lost.");
@@ -152,6 +181,13 @@ router.get('/spotify/callback', async (req, res) => {
     console.error("❌   1. Session cookie not being set/sent correctly");
     console.error("❌   2. Session expired or cleared");
     console.error("❌   3. Cookie domain/path/secure settings incorrect");
+    console.error("❌   4. Session store issue (using in-memory store)");
+    console.error(`❌ Current session cookie settings:`);
+    console.error(`❌   - secure: ${process.env.NODE_ENV === 'production' && process.env.FORCE_HTTPS !== 'false'}`);
+    console.error(`❌   - sameSite: lax`);
+    console.error(`❌   - httpOnly: true`);
+    console.error(`❌   - domain: ${process.env.COOKIE_DOMAIN || 'undefined'}`);
+    console.error(`❌   - path: /`);
     return res.status(400).send("Session expired. Please try connecting again.");
   }
   

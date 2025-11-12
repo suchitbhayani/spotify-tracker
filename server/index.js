@@ -115,25 +115,45 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.use(session({
+// Session configuration
+const sessionConfig = {
   secret: process.env.SESSION_SECRET || 'fallback-secret-change-in-production',
   resave: false,
-  saveUninitialized: true,
+  saveUninitialized: true, // Save session even if empty (needed for OAuth state)
+  name: 'spotify-session', // Custom session name
   cookie: {
-    sameSite: 'lax',
-    httpOnly: true,
+    sameSite: 'lax', // 'lax' works for OAuth redirects (allows cross-site redirects)
+    httpOnly: true, // Prevent XSS attacks
     // Use secure cookies in production (HTTPS required)
-    // In production behind nginx with HTTPS, set to true
+    // Behind nginx with HTTPS, cookies must be secure
     secure: process.env.NODE_ENV === 'production' && process.env.FORCE_HTTPS !== 'false',
     priority: 'high',
     // Set maxAge for session expiration (24 hours)
     maxAge: 24 * 60 * 60 * 1000,
-    // Set domain if needed (leave undefined for same domain)
+    // Set path to root so cookie works for all routes
+    path: '/',
+    // DO NOT set domain in production - let it default to the request domain
+    // Setting a domain can break cookies when behind a reverse proxy
     domain: process.env.COOKIE_DOMAIN || undefined,
   },
-  // Trust proxy for secure cookies behind nginx
+  // Trust proxy for secure cookies and correct IP addresses behind nginx
+  // This MUST be set when behind a reverse proxy (nginx, Render, etc.)
   proxy: true,
-}));
+};
+
+// Log session configuration in production for debugging
+if (process.env.NODE_ENV === 'production') {
+  console.log('🍪 Session configuration:');
+  console.log(`   - secure: ${sessionConfig.cookie.secure}`);
+  console.log(`   - sameSite: ${sessionConfig.cookie.sameSite}`);
+  console.log(`   - httpOnly: ${sessionConfig.cookie.httpOnly}`);
+  console.log(`   - path: ${sessionConfig.cookie.path}`);
+  console.log(`   - domain: ${sessionConfig.cookie.domain || 'undefined (same domain)'}`);
+  console.log(`   - maxAge: ${sessionConfig.cookie.maxAge}ms (24 hours)`);
+  console.log(`   - name: ${sessionConfig.name}`);
+}
+
+app.use(session(sessionConfig));
 
 app.use('/api', require('./routes/apiRouter'));
 app.use('/auth', require('./routes/authRouter'));
