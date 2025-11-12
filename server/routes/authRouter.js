@@ -13,7 +13,13 @@ const router = express.Router();
 const getRedirectUri = (req) => {
   // Priority 1: Explicit environment variable (most reliable)
   if (process.env.SPOTIFY_REDIRECT_URI) {
-    return process.env.SPOTIFY_REDIRECT_URI;
+    // Remove quotes and whitespace that might be in the env var
+    let uri = process.env.SPOTIFY_REDIRECT_URI.trim();
+    // Remove surrounding quotes if present
+    uri = uri.replace(/^["']|["']$/g, '');
+    console.log(`✅ Using SPOTIFY_REDIRECT_URI from env: "${uri}"`);
+    console.log(`🔍 Raw env value: "${process.env.SPOTIFY_REDIRECT_URI}"`);
+    return uri;
   }
 
   // Priority 2: BACKEND_URL environment variable
@@ -76,7 +82,11 @@ router.get("/spotify", async (req, res) => {
   
   // Get the appropriate redirect URI based on the request
   const redirectUri = getRedirectUri(req);
-  console.log(`🔗 Using redirect URI: ${redirectUri}`);
+  console.log(`🔗 Using redirect URI: "${redirectUri}"`);
+  console.log(`🔍 Redirect URI length: ${redirectUri.length}`);
+  console.log(`🔍 Redirect URI bytes: ${Buffer.from(redirectUri).toString('hex')}`);
+  console.log(`⚠️ CRITICAL: This URI must match EXACTLY what's in Spotify Developer Dashboard!`);
+  console.log(`⚠️ Check for: trailing spaces, quotes, special characters, case sensitivity`);
   
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
@@ -89,6 +99,11 @@ router.get("/spotify", async (req, res) => {
   });
 
   authUrl.search = new URLSearchParams(params).toString();
+  
+  // Log the redirect_uri parameter from the final URL (URL-encoded)
+  const encodedRedirectUri = encodeURIComponent(redirectUri);
+  console.log(`🔗 Encoded redirect_uri in URL: "${encodedRedirectUri}"`);
+  console.log(`🔗 Full authorization URL (first 200 chars): ${authUrl.toString().substring(0, 200)}...`);
   req.session.save(err => {
     if (err) {
       console.error("Failed to save session:", err.message);
@@ -103,8 +118,14 @@ router.get('/spotify/callback', async (req, res) => {
   const {code, error, state} = req.query;
   
   if (error) {
-    console.error("Spotify auth code error:", error);
-    return res.status(400).send("Authorization failed:" + error);
+    console.error("❌ Spotify auth code error:", error);
+    console.error("❌ Error details:", req.query);
+    if (error === 'invalid_client' || error === 'invalid_request') {
+      console.error("❌ INVALID_CLIENT/INVALID_REQUEST usually means redirect URI mismatch!");
+      console.error("❌ Check that SPOTIFY_REDIRECT_URI in Render matches EXACTLY what's in Spotify Developer Dashboard");
+      console.error("❌ Current SPOTIFY_REDIRECT_URI:", process.env.SPOTIFY_REDIRECT_URI);
+    }
+    return res.status(400).send(`Authorization failed: ${error}. Check server logs for details.`);
   }
   
   if (state !== req.session.state) {
@@ -116,6 +137,8 @@ router.get('/spotify/callback', async (req, res) => {
 
   // Get the same redirect URI that was used in the auth request
   const redirectUri = getRedirectUri(req);
+  console.log(`🔗 Callback - Using redirect URI: "${redirectUri}"`);
+  console.log(`⚠️ This MUST match EXACTLY what was sent to Spotify in the initial auth request!`);
   
   const url = "https://accounts.spotify.com/api/token";
   const payload = new URLSearchParams({
@@ -125,6 +148,8 @@ router.get('/spotify/callback', async (req, res) => {
     redirect_uri: redirectUri,
     code_verifier: codeVerifier,
   });
+  
+  console.log(`🔗 Token exchange payload redirect_uri: "${redirectUri}"`);
 
   const opts = {
     headers: {
@@ -138,9 +163,16 @@ router.get('/spotify/callback', async (req, res) => {
     const tokenData = tokenRes.data;
 
     if (tokenData.error) {
-      console.error("Spotify auth access token error:", tokenData.error);
-      console.error("Error Description:", tokenData.error_description);
-      return res.status(400).send("Authorization failed:" + tokenData.error);
+      console.error("❌ Spotify auth access token error:", tokenData.error);
+      console.error("❌ Error Description:", tokenData.error_description);
+      console.error("❌ Redirect URI used:", redirectUri);
+      if (tokenData.error === 'invalid_grant' || tokenData.error === 'invalid_request') {
+        console.error("❌ INVALID_GRANT/INVALID_REQUEST often means redirect URI mismatch or expired code");
+        console.error("❌ Verify redirect URI matches exactly between:");
+        console.error("❌   1. Render Dashboard → SPOTIFY_REDIRECT_URI");
+        console.error("❌   2. Spotify Developer Dashboard → Redirect URIs");
+      }
+      return res.status(400).send(`Authorization failed: ${tokenData.error}. Check server logs for details.`);
     }
 
     req.session.access_token = tokenData.access_token; 
