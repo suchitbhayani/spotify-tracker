@@ -141,6 +141,10 @@ router.get("/spotify", async (req, res) => {
   console.log(`🔗 Full authorization URL (first 200 chars): ${authUrl.toString().substring(0, 200)}...`);
   
   // Session was already saved above, now redirect to Spotify
+  // The session cookie should be set automatically by express-session middleware
+  // when we call res.redirect(), but we log to verify
+  console.log(`🔗 Redirecting to Spotify authorization URL`);
+  console.log(`🍪 Check browser DevTools → Application → Cookies after redirect to see if cookie is set`);
   res.redirect(authUrl.toString());
 });
 
@@ -166,7 +170,20 @@ router.get('/spotify/callback', async (req, res) => {
   console.log(`🔍 Callback - Session has redirectURI: ${!!req.session.redirectURI}`);
   
   // Check if cookies are being sent
-  console.log(`🍪 Callback - Cookies received: ${JSON.stringify(req.headers.cookie || 'none')}`);
+  const cookiesReceived = req.headers.cookie || 'none';
+  console.log(`🍪 Callback - Cookies received: ${cookiesReceived}`);
+  console.log(`🍪 Callback - Looking for session cookie: ${cookiesReceived.includes('spotify-session') ? 'FOUND' : 'NOT FOUND'}`);
+  
+  // Parse cookies to see what we got
+  if (cookiesReceived !== 'none') {
+    const cookiePairs = cookiesReceived.split(';').map(c => c.trim());
+    console.log(`🍪 Callback - Cookie count: ${cookiePairs.length}`);
+    cookiePairs.forEach((cookie, idx) => {
+      const [name] = cookie.split('=');
+      console.log(`🍪 Callback - Cookie ${idx + 1}: ${name}${name === 'spotify-session' ? ' ✅' : ''}`);
+    });
+  }
+  
   console.log(`🍪 Callback - Request headers: ${JSON.stringify({
     host: req.get('host'),
     'x-forwarded-host': req.get('x-forwarded-host'),
@@ -175,18 +192,32 @@ router.get('/spotify/callback', async (req, res) => {
     referer: req.get('referer')
   })}`);
   
+  // Check if this is a new session (no session ID or different session)
+  if (!req.sessionID) {
+    console.error("❌ ERROR: No session ID! This means no session cookie was sent.");
+    console.error("❌ The browser is not sending the session cookie back.");
+    console.error("❌ Possible causes:");
+    console.error("❌   1. Cookie was never set (check initial request logs)");
+    console.error("❌   2. Cookie domain/path mismatch");
+    console.error("❌   3. Cookie secure flag mismatch (HTTPS vs HTTP)");
+    console.error("❌   4. Cookie SameSite blocking cross-site redirect");
+    console.error("❌   5. Browser blocking third-party cookies");
+    return res.status(400).send("Session cookie not found. Please try connecting again.");
+  }
+  
   if (!req.session.state) {
-    console.error("❌ ERROR: No state in session! Session may have been lost.");
+    console.error("❌ ERROR: No state in session! Session exists but has no state.");
+    console.error(`❌ Session ID: ${req.sessionID}`);
+    console.error(`❌ Session keys: ${Object.keys(req.session).join(', ')}`);
     console.error("❌ This usually means:");
-    console.error("❌   1. Session cookie not being set/sent correctly");
-    console.error("❌   2. Session expired or cleared");
-    console.error("❌   3. Cookie domain/path/secure settings incorrect");
-    console.error("❌   4. Session store issue (using in-memory store)");
+    console.error("❌   1. Session was created but state wasn't saved");
+    console.error("❌   2. Session was cleared/reset");
+    console.error("❌   3. Different session ID (new session created)");
     console.error(`❌ Current session cookie settings:`);
     console.error(`❌   - secure: ${process.env.NODE_ENV === 'production' && process.env.FORCE_HTTPS !== 'false'}`);
     console.error(`❌   - sameSite: lax`);
     console.error(`❌   - httpOnly: true`);
-    console.error(`❌   - domain: ${process.env.COOKIE_DOMAIN || 'undefined'}`);
+    console.error(`❌   - domain: undefined (same domain)`);
     console.error(`❌   - path: /`);
     return res.status(400).send("Session expired. Please try connecting again.");
   }

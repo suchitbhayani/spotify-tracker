@@ -132,9 +132,10 @@ const sessionConfig = {
     maxAge: 24 * 60 * 60 * 1000,
     // Set path to root so cookie works for all routes
     path: '/',
-    // DO NOT set domain in production - let it default to the request domain
+    // CRITICAL: Do NOT set domain - let browser set it based on request domain
     // Setting a domain can break cookies when behind a reverse proxy
-    domain: process.env.COOKIE_DOMAIN || undefined,
+    // This was likely the issue with IPv4 vs IPv6 - domain mismatch
+    domain: undefined, // Always undefined - never set domain
   },
   // Trust proxy for secure cookies and correct IP addresses behind nginx
   // This MUST be set when behind a reverse proxy (nginx, Render, etc.)
